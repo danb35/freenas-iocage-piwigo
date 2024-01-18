@@ -1,9 +1,9 @@
 #!/bin/sh
 
-# Install Heimdall Dashboard (https://github.com/linuxserver/Heimdall)
+# Install Piwigo Photo Gallery (https://piwigo.org/)
 # in a FreeNAS jail
 
-# https://forum.freenas-community.org/t/install-heimdall-dashboard-in-a-jail-script-freenas-11-2/35
+# (No TrueNAS Forum Link at this time)
 
 # Check for root privileges
 if ! [ $(id -u) = 0 ]; then
@@ -63,6 +63,11 @@ fi
 DB_ROOT_PASSWORD=$(openssl rand -base64 16)
 DB_PASSWORD=$(openssl rand -base64 16)
 RELEASE=$(freebsd-version | cut -d - -f -1)"-RELEASE"
+# If release is 13.1-RELEASE, change to 13.2-RELEASE
+if [ "${RELEASE}" = "13.1-RELEASE" ]; then
+  RELEASE="13.2-RELEASE"
+fi 
+
 mountpoint=$(zfs get -H -o value mountpoint $(iocage get -p)/iocage)
 
 # Create the jail, pre-installing needed packages
@@ -70,23 +75,35 @@ cat <<__EOF__ >/tmp/pkg.json
 {
   "pkgs":[
   "nano",
-  "caddy", 
-  "php74", 
-  "php74-mbstring", 
-  "php74-zip", 
-  "php74-tokenizer", 
-  "php74-pdo", 
-  "php74-filter", 
-  "php74-xml", 
-  "php74-ctype", 
-  "php74-session", 
+  "caddy",
+  "php82",
+  "php82-mbstring",
+  "php82-zip",
+  "php82-tokenizer",
+  "php82-pdo",
+  "php82-filter",
+  "php82-xml",
+  "php82-ctype",
+  "php82-session",
+  "php82-dom",
+  "php82-exif",
+  "php82-gd",
+  "php82-iconv",
+  "php82-simplexml",
+  "php82-sodium",
+  "php82-zlib",
+  "mariadb106-server",
+  "imagemagick7",
+  "wget",
+  "mediainfo",
   "ffmpeg",
   "p5-Image-ExifTool",
   "go", 
   "git",
-  "mariadb103-server",
-  "php74-pdo_mysql",
-  "php74-mysqli"
+  "sudo",
+  "bzip2",
+  "php82-pdo_mysql",
+  "php82-mysqli"
   ]
 }
 __EOF__
@@ -101,27 +118,22 @@ fi
 rm /tmp/pkg.json
 
 # Store Caddyfile and data outside the jail
-mkdir -p "${POOL_PATH}"/apps/"${JAIL_NAME}"/www
-mkdir -p "${POOL_PATH}"/apps/"${JAIL_NAME}"/db
+mkdir -p "${POOL_PATH}"/"${JAIL_NAME}"/{config,db,galleries,upload}
 
-iocage exec "${JAIL_NAME}" mkdir -p /usr/local/www/
+iocage exec "${JAIL_NAME}" mkdir -p /usr/local/www/html/piwigo/{galleries,upload}
+iocage exec "${JAIL_NAME}" mkdir -p /usr/local/www/html/piwigo/local/config
 iocage exec "${JAIL_NAME}" mkdir -p  /var/db/mysql
-iocage fstab -a "${JAIL_NAME}" "${POOL_PATH}"/apps/"${JAIL_NAME}"/www /usr/local/www nullfs rw 0 0
-iocage fstab -a "${JAIL_NAME}" "${POOL_PATH}"/apps/"${JAIL_NAME}"/db /var/db/mysql nullfs rw 0 0
+iocage fstab -a "${JAIL_NAME}" "${POOL_PATH}"/"${JAIL_NAME}"/galleries /usr/local/www/html/piwigo/galleries nullfs rw 0 0
+iocage fstab -a "${JAIL_NAME}" "${POOL_PATH}"/"${JAIL_NAME}"/upload /usr/local/www/html/piwigo/upload nullfs rw 0 0
+iocage fstab -a "${JAIL_NAME}" "${POOL_PATH}"/"${JAIL_NAME}"/config /usr/local/www/html/piwigo/local/config nullfs rw 0 0
+iocage fstab -a "${JAIL_NAME}" "${POOL_PATH}"/"${JAIL_NAME}"/db /var/db/mysql nullfs rw 0 0
 
 # Create Caddyfile
 cat <<__EOF__ >"${mountpoint}"/jails/"${JAIL_NAME}"/root/usr/local/www/Caddyfile
 :80 {
-	log {
-		output file /var/log/heimdall_access.log
-		format single_field common_log
-	}
-
 	root * /usr/local/www/html/piwigo
 	file_server
-
 	php_fastcgi 127.0.0.1:9000
-
 }
 __EOF__
 
